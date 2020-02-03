@@ -1,0 +1,25 @@
+{
+"name":"new"
+,
+"messages":[
+{
+"sender":"server"
+,
+"content":"ali created new."
+}
+
+,
+{
+"sender":"ali"
+,
+"content":"hello!"
+}
+
+,
+{
+"sender":"server"
+,
+"content":"ali leaved the channel."
+}
+]
+}

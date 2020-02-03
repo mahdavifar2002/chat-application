@@ -3,13 +3,14 @@
 ///------- Chat Application Project - FoP Class - 2020 Winter ----------
 /// Department of Computer Engineering | Sharif University of Technology
 ///---------------------------------------------------------------------
+//********************* Global Variables ***********************
 #include <stdio.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
-#include "header.c"
-#include "cJSON.c"
+#include "client_header.c"
 #include "cJSON.h"
+#include "cJSON.c"
 //********************* Global Variables ***********************
 char name[MAX], pass[MAX], channel[MAX], token[MAX];
 //********************* List of Functions **********************
@@ -24,7 +25,10 @@ int chat_menu();        // 3
 int send_message();     // 3.1
 int refresh();          // 3.2
 int members();          // 3.3
-int leave_channel();    // 3.4
+int search_menu();      // 3.4
+int search_user();      // 3.4.1
+int search_message();   // 3.4.2
+int leave_channel();    // 3.5
 //************************ int main() **************************
 int main() {
     int state = 1;
@@ -71,6 +75,15 @@ int main() {
             state = members();
             break;
         case 34:
+            state = search_menu();
+            break;
+        case 341:
+            state = search_user();
+            break;
+        case 342:
+            state = search_message();
+            break;
+        case 35:
             state = leave_channel();
             break;
         }
@@ -78,20 +91,18 @@ int main() {
 }
 //********************* 1. Account Menu ************************
 int account_menu () {
-    cprintf(11, "Account Menu:\n\n");
-    cprintf(11, "1: Register\n");
-    cprintf(11, "2: Login\n");
-    cprintf(11, "3: Exit\n");
-    char inp;
-    while (true) {
-        inp = getch();
-        if (inp == '1')
-            return 11;
-        if (inp == '2')
-            return 12;
-        if (inp == '3')
-            return 0;
-    }
+    char inp =
+    make_menu("Account Menu", 3,
+              "Register",
+              "Login",
+              "Exit");
+
+    if (inp == '1')
+        return 11;
+    if (inp == '2')
+        return 12;
+    if (inp == '3')
+        return 0;
 }
 //******************** 1.1. Register Menu **********************
 int register_menu () {
@@ -183,21 +194,18 @@ int login_menu () {
 }
 //*********************** 2. Main Menu *************************
 int main_menu () {
-    cprintf(11, "Main Menu:\n\n");
-    cprintf(11, "1: Create Channel\n");
-    cprintf(11, "2: Join Channel\n");
-    cprintf(11, "3: Logout\n");
+    char inp =
+    make_menu("Main Menu", 3,
+              "Create Channel",
+              "Join Channel",
+              "Logout");
 
-    char inp;
-    while (true) {
-        inp = getch();
-        if (inp == '1')
-            return 21;
-        if (inp == '2')
-            return 22;
-        if (inp == '3')
-            return 23;
-    }
+    if (inp == '1')
+        return 21;
+    if (inp == '2')
+        return 22;
+    if (inp == '3')
+        return 23;
 }
 //******************* 2.1. Create Channel **********************
 int creat_channel() {
@@ -292,32 +300,33 @@ int logout_menu () {
 }
 //*********************** 3. Chat Menu *************************
 int chat_menu () {
-    cprintf(11, "Chat Menu:\n\n");
-    cprintf(11, "1: Send Message\n");
-    cprintf(11, "2: Refresh\n");
-    cprintf(11, "3: Channel Members\n");
-    cprintf(11, "4: Leave Channel\n");
+    char inp =
+    make_menu("Chat Menu", 5,
+              "Send Message",
+              "Refresh",
+              "Channel Members",
+              "Search",
+              "Leave Channel");
 
-    char inp;
-    while (true) {
-        inp = getch();
-        if (inp == '1')
-            return 31;
-        if (inp == '2')
-            return 32;
-        if (inp == '3')
-            return 33;
-        if (inp == '4')
-            return 34;
-    }
+    if (inp == '1')
+        return 31;
+    if (inp == '2')
+        return 32;
+    if (inp == '3')
+        return 33;
+    if (inp == '4')
+        return 34;
+    if (inp == '5')
+        return 35;
 }
 //******************** 3.1. Send Message ***********************
 int send_message () {
     // User interface: Get message
     char text[MAX];
     cprintf(11, "Enter Your Message:\n");
+    set_color(240);
+    printf("                                             \r");
     cscanf(240, " %[^\n]", text);
-
     // Send message to server
     _send("send %s, %s\n", text, token);
 
@@ -378,8 +387,8 @@ int refresh () {
 
         // Print new message
         cprintf(col1, "%s:", sender->valuestring);
-        printf(" ");
-        cprintf(col2, "%s\n\n", text->valuestring);
+        printf("\t");
+        cprintf(col2, " %s \n\n", text->valuestring);
     }
 
     // Wait and return
@@ -419,7 +428,114 @@ int members () {
     system("pause");
     return 3;
 }
-//******************** 3.4. Leave Channel **********************
+//********************* 3.4. Search Menu ***********************
+int search_menu() {
+    char inp =
+    make_menu("Search Menu", 2,
+              "Search among channel users",
+              "Search among channel messages");
+
+    if (inp == '1')
+        return 341;
+    if (inp == '2')
+        return 342;
+}
+//******************** 3.4.1. Search User **********************
+int search_user() {
+    // User interface
+    cprintf(11, "Enter a Username:\n");
+    char name[MAX];
+    cscanf(240, " %s", name);
+
+    // Send the message to server
+    _send("search user %s, %s\n", name, token);
+
+    // Read the message from server and copy it to buffer
+    char* buffer = _recv();
+
+    // Parsing JSON
+    cJSON* json = cJSON_Parse(buffer);
+    cJSON* type = cJSON_GetObjectItemCaseSensitive(json, "type");
+    cJSON* content = cJSON_GetObjectItemCaseSensitive(json, "content");
+
+    // Check if some Error happened == User Not Found
+    if (strcmp(type->valuestring, "Error") == 0)
+    {
+        cprintf(4, "%s %s\n", name, content->valuestring);
+    }
+
+    else // == Successful
+    {
+        // User found successfully
+        cprintf(10, "%s is a member of this channel :)\n", name);
+    }
+
+    // Wait and return
+    system("pause");
+    return 3;
+}
+//****************** 3.4.2. Search Messages ********************
+int search_message() {
+    // User interface
+    cprintf(11, "Enter a Word:\n");
+    char word[MAX];
+    cscanf(240, " %s", word);
+
+    // Send the message to server
+    _send("search message %s, %s\n", word, token);
+
+    // Read the message from server and copy it to buffer
+    char* buffer = _recv();
+
+    // Parsing JSON
+    cJSON* json = cJSON_Parse(buffer);
+    cJSON* type = cJSON_GetObjectItemCaseSensitive(json, "type");
+    cJSON* content = cJSON_GetObjectItemCaseSensitive(json, "content");
+
+    int num = cJSON_GetArraySize(content);
+
+    // Check if new massage exits
+    if (num == 0) {
+        cprintf(4, "\nNo Message Found!\n\n");
+    }
+    else {
+        cprintf(10, "\n%d Messages Found:\n\n", num);
+    }
+
+    for (int i = 0; i < cJSON_GetArraySize(content); i++)
+    {
+        // Parsing new message
+        cJSON* item = cJSON_GetArrayItem(content, i);
+        cJSON* sender = cJSON_GetObjectItemCaseSensitive(item, "sender");
+        cJSON* text = cJSON_GetObjectItemCaseSensitive(item, "content");
+
+        // Set message color based on sender
+        int col1, col2;
+        if (strcmp(sender->valuestring, "server") == 0) {
+            col1 = 128;
+            col2 = 8;
+        }
+        else if (strcmp(sender->valuestring, name) == 0) {
+            col1 = 10;
+            col2 = 32;
+        }
+        else {
+            col1 = 15;
+            col2 = 240;
+        }
+
+        // Print new message
+        cprintf(col1, "%s:", sender->valuestring);
+        printf("\t");
+        cprintf(col2, " %s \n\n", text->valuestring);
+    }
+
+    // Wait and return
+    system("pause");
+    return 3;
+
+}
+//******************** 3.5. Leave Channel **********************
 int leave_channel() {
     // Send request to server
     _send("leave %s\n", token);

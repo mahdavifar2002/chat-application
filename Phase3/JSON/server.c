@@ -7,9 +7,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <dirent.h>
-#include "header.c"
-#include "cJSON.c"
+#include "server_header.c"
 #include "cJSON.h"
+#include "cJSON.c"
 //********************* Global Variables ***********************
 typedef struct {
     char name[100];
@@ -27,24 +27,27 @@ char*  req;
 char   token[100];
 cJSON* ans;
 //********************* List of Functions **********************
-void read_data ();
-void read_user ();
-void read_chnl ();
-void register_user ();
-void login_user ();
-void logout_user ();
-void create_channel ();
-void join_channel ();
-void send_message ();
-void refresh ();
-void members ();
-void leave_channel ();
+void read_data ();      // 0
+void read_user ();      // 0.1
+void read_chnl ();      // 0.2
+void register_user ();  // 1.1
+void login_user ();     // 1.2
+void create_channel (); // 2.1
+void join_channel ();   // 2.2
+void logout_user ();    // 2.3
+void send_message ();   // 3.1
+void refresh ();        // 3.2
+void members ();        // 3.3
+void search_user ();    // 3.4.1
+void search_message (); // 3.4.2
+void leave_channel ();  // 3.5
 //--------------------- Auxiliary Functions ---------------------
 void make_token (int);
 USER* find_token ();
 void make_ans (char*, char*);
 void update_channel (cJSON*);
 void add_to_channel (cJSON*, char*, char*);
+bool find (char* str, char* word);
 //************************ int main() **************************
 int main() {
     // reading data...
@@ -95,12 +98,20 @@ int main() {
             leave_channel();
         }
         //------------------------------------------------------
+        else if (strncmp("search user ", req, 12) == 0) {
+            search_user();
+        }
+        //------------------------------------------------------
+        else if (strncmp("search message ", req, 15) == 0) {
+            search_message();
+        }
+        //------------------------------------------------------
         else
         {
             make_ans("Error", "not ready yet.");
         }
         //------------------------------------------------------
-        char* str = cJSON_Print(ans);
+        char* str = cJSON_PrintUnformatted(ans);
         _send("%s", str);
 
         printf("To Client:\t");
@@ -153,7 +164,7 @@ void read_user () {
             users[uMAX].seen = 0;
 
             //printf ("%s\n", ent->d_name);
-            //printf ("%s\n", cJSON_Print(users[uMAX-1]));
+            //printf ("%s\n", cJSON_PrintUnformatted(users[uMAX-1]));
             uMAX++;
             free(buffer);
         }
@@ -187,7 +198,7 @@ void read_chnl () {
             chnls[cMAX] = cJSON_Parse(buffer);
 
             //printf ("%s\n", ent->d_name);
-            //printf ("%s\n", cJSON_Print(chnls[cMAX]));
+            //printf ("%s\n", cJSON_PrintUnformatted(chnls[cMAX]));
             cMAX++;
             free(buffer);
         }
@@ -222,7 +233,7 @@ void register_user () {
     cJSON* ptr = cJSON_CreateObject();
     cJSON_AddStringToObject(ptr, "username", name);
     cJSON_AddStringToObject(ptr, "password", pass);
-    fprintf(fptr, "%s", cJSON_Print(ptr));
+    fprintf(fptr, "%s", cJSON_PrintUnformatted(ptr));
     fclose(fptr);
 
     // Add new user structure into array
@@ -360,7 +371,7 @@ void update_channel (cJSON* chnl) {
     // Save channel into file
     FILE* fptr = fopen(path, "w");
 
-    fprintf(fptr, "%s", cJSON_Print(chnl));
+    fprintf(fptr, "%s", cJSON_PrintUnformatted(chnl));
     fclose(fptr);
 }
 //****************** Add Message To Channel ********************
@@ -474,7 +485,13 @@ void refresh () {
     for (int i = user->seen; i < num; i++)
     {
         cJSON* item = cJSON_GetArrayItem(messages, i);
-        cJSON_AddItemToArray(list, cJSON_Parse(cJSON_Print(item)));
+        char* sender = cJSON_GetObjectItem(item, "sender")->valuestring;
+        char* content = cJSON_GetObjectItem(item, "content")->valuestring;
+
+        item = cJSON_CreateObject();
+        cJSON_AddStringToObject(item, "sender", sender);
+        cJSON_AddStringToObject(item, "content", content);
+        cJSON_AddItemToArray(list, item);
     }
 
     user->seen = num;
@@ -529,4 +546,93 @@ void leave_channel () {
     user->seen = 0;
 
     make_ans("Successful","");
+}
+//*********************** Search User **************************
+void search_user() {
+    // Parse request from client
+    char name[100] = {};
+    sscanf(req, "search user %[^,], %[^\n]", name, token);
+    USER* user = find_token();
+    // Send Error if user not found
+    if (user == NULL) {
+        make_ans("Error", "Authentication failed!");
+        return;
+    }
+    // Send Error if user don't have any channel
+    if (user->chnl == NULL) {
+        make_ans("Error", "You are not a member of a channel.");
+        return;
+    }
+
+    // Search among channel users to find given username
+    for (int i = 0; i < uMAX; i++) {
+        if (strcmp(name, users[i].name) == 0)
+        {
+            if (users[i].chnl == user->chnl) {
+                make_ans("Successful","");
+                return;
+            }
+            else {
+                make_ans("Error","is not a member of this channel :(");
+                return;
+            }
+        }
+    }
+
+    make_ans("Error","is not a valid username.");
+}
+//******************* Find word in string **********************
+bool find (char* source, char* word) {
+    char str[MAX];
+    strcpy(str, source);
+
+    char* tok = strtok(str, " \n\0\r\t");
+
+    while (tok != NULL) {
+
+        if (strcmp(word, tok) == 0)
+            return true;
+
+        tok = strtok(0, " \n\0\r\t");
+    }
+
+    return false;
+}
+//********************** Search Message ************************
+void search_message() {
+    // Parse request from client
+    char word[100] = {};
+    sscanf(req, "search message %[^,], %[^\n]", word, token);
+    USER* user = find_token();
+    // Send Error if user not found
+    if (user == NULL) {
+        make_ans("Error", "Authentication failed!");
+        return;
+    }
+    // Send Error if user don't have any channel
+    if (user->chnl == NULL) {
+        make_ans("Error", "You are not a member of a channel.");
+        return;
+    }
+
+    //
+    cJSON_AddStringToObject(ans, "type", "List");
+    cJSON* list = cJSON_AddArrayToObject(ans, "content");
+
+    cJSON* messages = cJSON_GetObjectItemCaseSensitive(user->chnl, "messages");
+    int num = cJSON_GetArraySize(messages);
+
+    for (int i = 0; i < num; i++)
+    {
+        cJSON* item = cJSON_GetArrayItem(messages, i);
+        char* sender = cJSON_GetObjectItem(item, "sender")->valuestring;
+        char* content = cJSON_GetObjectItem(item, "content")->valuestring;
+
+        if (find(content, word)) {
+            item = cJSON_CreateObject();
+            cJSON_AddStringToObject(item, "sender", sender);
+            cJSON_AddStringToObject(item, "content", content);
+            cJSON_AddItemToArray(list, item);
+        }
+    }
 }
