@@ -1,7 +1,7 @@
 
 #include <winsock2.h>
 
-#define MAX 800
+#define MAX 8000
 #define PORT 12345
 #define SA struct sockaddr
 
